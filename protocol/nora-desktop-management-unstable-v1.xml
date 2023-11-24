@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<protocol name="nora_desktop_management_unstable_v1">
+  <copyright><![CDATA[
+    Copyright (C) 2023 Linus Johansen
+
+    This program is free software: you can redistribute it and/or modify
+    it under the terms of the GNU Lesser General Public License as published by
+    the Free Software Foundation, either version 2.1 of the License, or
+    (at your option) any later version.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU Lesser General Public License for more details.
+
+    You should have received a copy of the GNU Lesser General Public License
+    along with this program.  If not, see <http://www.gnu.org/licenses/>.
+  ]]></copyright>
+  <interface name="nora_desktop_manager_v1" version="1">
+    <description summary="Nora desktop manager">
+      This interface allows clients to obtain information about the desktop.
+      The protocol forwards information about workspaces and their views.
+      A view can be can either be a window or a desktop widget such as the
+      background or bar. Not all views relate back to a workspace and thus
+      some views are orphans.
+    </description>
+
+    <event name="workspace">
+      <description summary="a workspace has been created">
+        This event is called several times at client connection to inform us about
+        the desktop's current workspaces. The event can also be called if the
+        compositor creates a new workspace during runtime.
+      </description>
+      <arg name="workspace" type="new_id" interface="nora_desktop_workspace_v1"/>
+    </event>
+
+    <event name="view">
+      <description summary="a view has been created">
+        In common with workspaces this event is called at client connection to
+        inform us about the desktop's current views. The event is also called
+        whenever the desktop is made aware of a new view, such as a new window
+        or widget.
+      </description>
+      <arg name="view" type="new_id" interface="nora_desktop_view_v1"/>
+    </event>
+  </interface>
+
+  <interface name="nora_desktop_workspace_v1" version="1">
+    <description summary="Nora desktop workspace">
+      A desktop managed workspace. The workspace manages a set of views.
+      Although a view does not have to be related to a workspace. 
+      Think wallpapers and global bars for example
+    </description>
+
+    <event name="id">
+      <description summary="the id of the workspace" />
+      <arg name="id" type="string"/>
+    </event>
+  </interface>
+
+  <interface name="nora_desktop_view_v1" version="1">
+    <description summary="Nora desktop view">
+      A desktop mapped view. A view can either be a window or a desktop
+      widget. A widget is for example the program managing your wallpaper
+      and a window is self explanatory. As a client program we are allowed
+      to modify a views apperance on the desktop via requests. We can tell
+      the compositor to give keyboard focus to a specific view. We can tell
+      the compositor to hide certain views.
+    </description>
+
+    <request name="hide">
+      <description summary="hides the window from its current workspace">
+          This request hides the window from the workspace it resides in. 
+          The request only applies to window views. If the compositor
+          receives a hide event for a widget view it simply ignores
+          the request.
+      </description>
+    </request>
+
+    <event name="app_id">
+      <description summary="the app id of the view" />
+      <arg name="app_id" type="string"/>
+    </event>
+
+    <event name="title">
+      <description summary="the title of the view">
+        The title of the view. The title is only present when the view 
+        is of kind window and not window.
+      </description>
+      <arg name="title" type="string" allow-null="true"/>
+    </event>
+
+    <event name="destroy" type="destructor">
+      <description summary="the view has been destroyed">
+        The view has been destroyed and we are guaranteed there will not
+        be any more events on this view and the client is free to clean
+        up all resources.
+      </description>
+    </event>
+
+    <event name="hidden">
+      <description summary="conveys information about the views visibility">
+        This view's visibility status. A minimized view will receive a hidden
+        event with the argument set to true.
+      </description>
+      <arg name="hidden" type="uint"/>
+    </event>
+
+    <event name="kind">
+      <description summary="what kind of view is this"/>
+      <arg name="kind" type="uint" />
+    </event>
+
+    <event name="workspace">
+        <description summary="What workspace does this view reside in"/>
+        <arg name="workspace" type="object" interface="nora_desktop_workspace_v1" allow-null="true"/>
+    </event>
+
+    <enum name="kind">
+      <description summary="The different surfaces a view can be"/>
+      <entry name="window" value="0" summary="the view is a window"/>
+      <entry name="widget" value="1" summary="the view is a widget"/>
+    </enum>
+  </interface>
+</protocol>
