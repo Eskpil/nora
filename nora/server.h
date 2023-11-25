@@ -16,19 +16,19 @@
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_cursor.h>
 #include <wlr/types/wlr_data_device.h>
+#include <wlr/types/wlr_drm.h>
 #include <wlr/types/wlr_input_device.h>
 #include <wlr/types/wlr_keyboard.h>
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_output_layout.h>
+#include <wlr/types/wlr_output_management_v1.h>
 #include <wlr/types/wlr_pointer.h>
+#include <wlr/types/wlr_presentation_time.h>
 #include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_seat.h>
 #include <wlr/types/wlr_subcompositor.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_xdg_shell.h>
-#include <wlr/types/wlr_output_management_v1.h>
-#include <wlr/types/wlr_presentation_time.h>
-#include <wlr/types/wlr_drm.h>
 #include <wlr/util/log.h>
 #include <xkbcommon/xkbcommon.h>
 
@@ -120,7 +120,8 @@ struct nora_output {
 };
 
 enum nora_view_kind {
-  NORA_VIEW_KIND_XDG,
+  NORA_VIEW_KIND_XDG_TOPLEVEL,
+  NORA_VIEW_KIND_XDG_POPUP,
   NORA_VIEW_KIND_LAYER,
 };
 
@@ -135,6 +136,10 @@ struct nora_view {
 
   int x, y;
 
+  struct wlr_surface *surface;
+
+  // TODO: Find an ergonomic way to avoid having to repeat the map, unmap and
+  // destroy listeners on xdg based surfaces.
   union {
     struct {
       struct wlr_xdg_toplevel *xdg_toplevel;
@@ -154,7 +159,20 @@ struct nora_view {
       struct wl_listener set_app_id;
 
       struct wlr_box box;
-    } xdg;
+    } xdg_toplevel;
+
+    struct {
+      struct wlr_xdg_popup *xdg_popup;
+      struct wlr_scene_tree *scene_tree;
+
+      struct wl_listener map;
+      struct wl_listener unmap;
+      struct wl_listener destroy;
+
+      struct wl_listener reposition;
+
+      struct nora_view *parent;
+    } xdg_popup;
 
     struct {
       struct wlr_layer_surface_v1 *surface;

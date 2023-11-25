@@ -173,48 +173,6 @@ static void nora_arrange_layers(struct nora_output *output) {
   }
 }
 
-static void nora_view_begin_interactive(struct nora_view *view,
-                                        enum nora_cursor_mode mode,
-                                        uint32_t edges) {
-  /* This function sets up an interactive move or resize operation, where the
-   * compositor stops propegating pointer events to clients and instead
-   * consumes them itself, to move or resize windows. */
-  struct nora_server *server = view->server;
-  struct wlr_surface *focused_surface =
-      server->input.seat->pointer_state.focused_surface;
-  if (view->xdg.xdg_toplevel->base->surface !=
-      wlr_surface_get_root_surface(focused_surface)) {
-    /* Deny move/resize requests from unfocused clients. */
-    return;
-  }
-
-  server->input.grabbed_view = view;
-  server->input.cursor_mode = mode;
-
-  if (mode == NORA_CURSOR_MOVE) {
-    server->input.grab_x =
-        server->input.cursor->x - view->xdg.scene_tree->node.x;
-    server->input.grab_y =
-        server->input.cursor->y - view->xdg.scene_tree->node.y;
-  } else {
-    struct wlr_box geo_box;
-    wlr_xdg_surface_get_geometry(view->xdg.xdg_toplevel->base, &geo_box);
-
-    double border_x = (view->xdg.scene_tree->node.x + geo_box.x) +
-                      ((edges & WLR_EDGE_RIGHT) ? geo_box.width : 0);
-    double border_y = (view->xdg.scene_tree->node.y + geo_box.y) +
-                      ((edges & WLR_EDGE_BOTTOM) ? geo_box.height : 0);
-    server->input.grab_x = server->input.cursor->x - border_x;
-    server->input.grab_y = server->input.cursor->y - border_y;
-
-    server->input.grab_geobox = geo_box;
-    server->input.grab_geobox.x += view->xdg.scene_tree->node.x;
-    server->input.grab_geobox.y += view->xdg.scene_tree->node.y;
-
-    server->input.resize_edges = edges;
-  }
-}
-
 static void on_layer_commit(struct wl_listener *listener, void *data) {
   (void)data;
 
@@ -267,87 +225,6 @@ static void on_layer_new_popup(struct wl_listener *listener, void *data) {
           view->layer.surface->namespace);
 }
 
-static void on_xdg_toplevel_map(struct wl_listener *listener, void *data) {
-  /* Called when the surface is mapped, or ready to display on-screen. */
-  struct nora_view *view = wl_container_of(listener, view, xdg.map);
-  nora_desktop_insert_view(view->server->desktop.layout, view);
-}
-
-static void on_xdg_toplevel_unmap(struct wl_listener *listener, void *data) {
-  /* Called when the surface is unmapped, and should no longer be shown. */
-  struct nora_view *view = wl_container_of(listener, view, xdg.unmap);
-  nora_desktop_remove_view(view->server->desktop.layout, view);
-}
-
-static void on_xdg_toplevel_destroy(struct wl_listener *listener, void *data) {
-  /* Called when the surface is destroyed and should never be shown again. */
-  struct nora_view *view = wl_container_of(listener, view, xdg.destroy);
-
-  nora_desktop_view_handle_unstable_v1_destroy(view->view_handle);
-
-  wl_list_remove(&view->xdg.map.link);
-  wl_list_remove(&view->xdg.unmap.link);
-  wl_list_remove(&view->xdg.destroy.link);
-
-  wl_list_remove(&view->xdg.request_fullscreen.link);
-  wl_list_remove(&view->xdg.request_maximize.link);
-  wl_list_remove(&view->xdg.request_resize.link);
-  wl_list_remove(&view->xdg.request_move.link);
-
-  wl_list_remove(&view->xdg.set_app_id.link);
-  wl_list_remove(&view->xdg.set_title.link);
-
-  free(view);
-}
-
-static void on_xdg_toplevel_request_move(struct wl_listener *listener,
-                                         void *data) {
-  // TODO: Check the current tiling mode in the surface's workspace.
-
-  struct nora_view *view =
-      wl_container_of(listener, view, xdg.request_move);
-  nora_view_begin_interactive(view, NORA_CURSOR_MOVE, 0);
-}
-
-static void on_xdg_toplevel_request_resize(struct wl_listener *listener,
-                                           void *data) {
-  // TODO: Check the current tiling mode in the surface's workspace.
-
-  struct wlr_xdg_toplevel_resize_event *event = data;
-
-  struct nora_view *view =
-      wl_container_of(listener, view, xdg.request_resize);
-
-  nora_view_begin_interactive(view, NORA_CURSOR_RESIZE, event->edges);
-}
-
-// TODO: Implement maximize and fullscreen events.
-static void on_xdg_toplevel_request_maximize(struct wl_listener *listener,
-                                             void *data) {
-  struct nora_view *view =
-      wl_container_of(listener, view, xdg.request_maximize);
-  wlr_xdg_surface_schedule_configure(view->xdg.xdg_toplevel->base);
-}
-
-static void on_xdg_toplevel_request_fullscreen(struct wl_listener *listener,
-                                               void *data) {
-  struct nora_view *view =
-      wl_container_of(listener, view, xdg.request_fullscreen);
-  wlr_xdg_surface_schedule_configure(view->xdg.xdg_toplevel->base);
-}
-
-static void on_xdg_toplevel_title(struct wl_listener *listener, void *data) {
-  struct nora_view *view = wl_container_of(listener, view, xdg.set_title);
-  nora_desktop_view_handle_unstable_v1_set_title(view->view_handle,
-                                                 view->xdg.xdg_toplevel->title);
-}
-
-static void on_xdg_toplevel_app_id(struct wl_listener *listener, void *data) {
-  struct nora_view *view = wl_container_of(listener, view, xdg.set_app_id);
-  nora_desktop_view_handle_unstable_v1_set_app_id(
-      view->view_handle, view->xdg.xdg_toplevel->app_id);
-}
-
 void nora_new_layer_surface(struct wl_listener *listener, void *data) {
   struct nora_server *server =
       wl_container_of(listener, server, desktop.new_layer_surface);
@@ -391,63 +268,235 @@ void nora_new_layer_surface(struct wl_listener *listener, void *data) {
   nora_arrange_layers(output);
 }
 
+static void nora_view_begin_interactive(struct nora_view *view,
+                                        enum nora_cursor_mode mode,
+                                        uint32_t edges) {
+  /* This function sets up an interactive move or resize operation, where the
+   * compositor stops propagating pointer events to clients and instead
+   * consumes them itself, to move or resize windows. */
+  struct nora_server *server = view->server;
+  struct wlr_surface *focused_surface =
+      server->input.seat->pointer_state.focused_surface;
+  if (view->xdg_toplevel.xdg_toplevel->base->surface !=
+      wlr_surface_get_root_surface(focused_surface)) {
+    /* Deny move/resize requests from unfocused clients. */
+    return;
+  }
+
+  server->input.grabbed_view = view;
+  server->input.cursor_mode = mode;
+
+  if (mode == NORA_CURSOR_MOVE) {
+    server->input.grab_x =
+        server->input.cursor->x - view->xdg_toplevel.scene_tree->node.x;
+    server->input.grab_y =
+        server->input.cursor->y - view->xdg_toplevel.scene_tree->node.y;
+  } else {
+    struct wlr_box geo_box;
+    wlr_xdg_surface_get_geometry(view->xdg_toplevel.xdg_toplevel->base,
+                                 &geo_box);
+
+    double border_x = (view->xdg_toplevel.scene_tree->node.x + geo_box.x) +
+                      ((edges & WLR_EDGE_RIGHT) ? geo_box.width : 0);
+    double border_y = (view->xdg_toplevel.scene_tree->node.y + geo_box.y) +
+                      ((edges & WLR_EDGE_BOTTOM) ? geo_box.height : 0);
+    server->input.grab_x = server->input.cursor->x - border_x;
+    server->input.grab_y = server->input.cursor->y - border_y;
+
+    server->input.grab_geobox = geo_box;
+    server->input.grab_geobox.x += view->xdg_toplevel.scene_tree->node.x;
+    server->input.grab_geobox.y += view->xdg_toplevel.scene_tree->node.y;
+
+    server->input.resize_edges = edges;
+  }
+}
+
+static void on_xdg_toplevel_map(struct wl_listener *listener, void *data) {
+  /* Called when the surface is mapped, or ready to display on-screen. */
+  struct nora_view *view = wl_container_of(listener, view, xdg_toplevel.map);
+  nora_desktop_insert_view(view->server->desktop.layout, view);
+}
+
+static void on_xdg_toplevel_unmap(struct wl_listener *listener, void *data) {
+  /* Called when the surface is unmapped, and should no longer be shown. */
+  struct nora_view *view = wl_container_of(listener, view, xdg_toplevel.unmap);
+  nora_desktop_remove_view(view->server->desktop.layout, view);
+}
+
+static void on_xdg_toplevel_destroy(struct wl_listener *listener, void *data) {
+  /* Called when the surface is destroyed and should never be shown again. */
+  struct nora_view *view =
+      wl_container_of(listener, view, xdg_toplevel.destroy);
+
+  nora_desktop_view_handle_unstable_v1_destroy(view->view_handle);
+
+  wl_list_remove(&view->xdg_toplevel.map.link);
+  wl_list_remove(&view->xdg_toplevel.unmap.link);
+  wl_list_remove(&view->xdg_toplevel.destroy.link);
+
+  wl_list_remove(&view->xdg_toplevel.request_fullscreen.link);
+  wl_list_remove(&view->xdg_toplevel.request_maximize.link);
+  wl_list_remove(&view->xdg_toplevel.request_resize.link);
+  wl_list_remove(&view->xdg_toplevel.request_move.link);
+
+  wl_list_remove(&view->xdg_toplevel.set_app_id.link);
+  wl_list_remove(&view->xdg_toplevel.set_title.link);
+
+  free(view);
+}
+
+static void on_xdg_toplevel_request_move(struct wl_listener *listener,
+                                         void *data) {
+  // TODO: Check the current tiling mode in the surface's workspace.
+
+  struct nora_view *view =
+      wl_container_of(listener, view, xdg_toplevel.request_move);
+  nora_view_begin_interactive(view, NORA_CURSOR_MOVE, 0);
+}
+
+static void on_xdg_toplevel_request_resize(struct wl_listener *listener,
+                                           void *data) {
+  // TODO: Check the current tiling mode in the surface's workspace.
+
+  struct wlr_xdg_toplevel_resize_event *event = data;
+
+  struct nora_view *view =
+      wl_container_of(listener, view, xdg_toplevel.request_resize);
+
+  nora_view_begin_interactive(view, NORA_CURSOR_RESIZE, event->edges);
+}
+
+// TODO: Implement maximize and fullscreen events.
+static void on_xdg_toplevel_request_maximize(struct wl_listener *listener,
+                                             void *data) {
+  struct nora_view *view =
+      wl_container_of(listener, view, xdg_toplevel.request_maximize);
+  wlr_xdg_surface_schedule_configure(view->xdg_toplevel.xdg_toplevel->base);
+}
+
+static void on_xdg_toplevel_request_fullscreen(struct wl_listener *listener,
+                                               void *data) {
+  struct nora_view *view =
+      wl_container_of(listener, view, xdg_toplevel.request_fullscreen);
+  wlr_xdg_surface_schedule_configure(view->xdg_toplevel.xdg_toplevel->base);
+}
+
+static void on_xdg_toplevel_title(struct wl_listener *listener, void *data) {
+  struct nora_view *view =
+      wl_container_of(listener, view, xdg_toplevel.set_title);
+  nora_desktop_view_handle_unstable_v1_set_title(
+      view->view_handle, view->xdg_toplevel.xdg_toplevel->title);
+}
+
+static void on_xdg_toplevel_app_id(struct wl_listener *listener, void *data) {
+  struct nora_view *view =
+      wl_container_of(listener, view, xdg_toplevel.set_app_id);
+  nora_desktop_view_handle_unstable_v1_set_app_id(
+      view->view_handle, view->xdg_toplevel.xdg_toplevel->app_id);
+}
+
+static void on_xdg_popup_map(struct wl_listener *listener, void *data) {
+  struct nora_view *view = wl_container_of(listener, view, xdg_popup.map);
+}
+
+static void on_xdg_popup_unmap(struct wl_listener *listener, void *data) {
+  struct nora_view *view = wl_container_of(listener, view, xdg_popup.unmap);
+}
+
+static void on_xdg_popup_reposition(struct wl_listener *listener, void *data) {
+  struct nora_view *view =
+      wl_container_of(listener, view, xdg_popup.reposition);
+}
+
+static void on_xdg_popup_destroy(struct wl_listener *listener, void *data) {
+  struct nora_view *view = wl_container_of(listener, view, xdg_popup.destroy);
+}
+
 void nora_new_xdg_surface(struct wl_listener *listener, void *data) {
   struct nora_server *server =
       wl_container_of(listener, server, desktop.new_xdg_surface);
   struct wlr_xdg_surface *surface = data;
 
-  assert(surface->role == WLR_XDG_SURFACE_ROLE_TOPLEVEL);
-
   struct nora_view *view = calloc(1, sizeof(*view));
-  view->kind = NORA_VIEW_KIND_XDG;
   view->server = server;
-
-  view->xdg.xdg_toplevel = surface->toplevel;
-  view->xdg.scene_tree =
-      wlr_scene_xdg_surface_create(&server->scene->tree, surface);
-
 
   struct nora_output *output = nora_get_current_output(server);
   view->output = output;
-  view->xdg.scene_tree->node.data = view;
+
+  view->surface = surface->surface;
+
+  if (surface->role == WLR_XDG_SURFACE_ROLE_POPUP) {
+    view->kind = NORA_VIEW_KIND_XDG_POPUP;
+    view->xdg_popup.scene_tree =
+        wlr_scene_xdg_surface_create(&server->scene->tree, surface);
+    view->xdg_popup.scene_tree->node.data = view;
+
+    view->xdg_popup.xdg_popup = surface->popup;
+
+    view->xdg_popup.map.notify = on_xdg_popup_map;
+    wl_signal_add(&surface->surface->events.map, &view->xdg_popup.map);
+
+    view->xdg_popup.unmap.notify = on_xdg_popup_unmap;
+    wl_signal_add(&surface->surface->events.unmap, &view->xdg_popup.unmap);
+
+    view->xdg_popup.destroy.notify = on_xdg_popup_destroy;
+    wl_signal_add(&surface->surface->events.destroy, &view->xdg_popup.destroy);
+
+    view->xdg_popup.reposition.notify = on_xdg_popup_reposition;
+    wl_signal_add(&surface->popup->events.reposition,
+                  &view->xdg_popup.reposition);
+
+    return;
+  }
+
+  view->xdg_toplevel.scene_tree =
+      wlr_scene_xdg_surface_create(&server->scene->tree, surface);
+
+  view->kind = NORA_VIEW_KIND_XDG_TOPLEVEL;
+  view->xdg_toplevel.scene_tree->node.data = view;
+
+  view->xdg_toplevel.xdg_toplevel = surface->toplevel;
 
   view->view_handle =
       nora_desktop_view_unstable_v1_create(server->desktop.manager);
 
-  view->xdg.map.notify = on_xdg_toplevel_map;
-  wl_signal_add(&surface->surface->events.map, &view->xdg.map);
-  view->xdg.unmap.notify = on_xdg_toplevel_unmap;
-  wl_signal_add(&surface->surface->events.unmap, &view->xdg.unmap);
-  view->xdg.destroy.notify = on_xdg_toplevel_destroy;
-  wl_signal_add(&surface->events.destroy, &view->xdg.destroy);
+  view->xdg_toplevel.map.notify = on_xdg_toplevel_map;
+  wl_signal_add(&surface->surface->events.map, &view->xdg_toplevel.map);
+  view->xdg_toplevel.unmap.notify = on_xdg_toplevel_unmap;
+  wl_signal_add(&surface->surface->events.unmap, &view->xdg_toplevel.unmap);
+  view->xdg_toplevel.destroy.notify = on_xdg_toplevel_destroy;
+  wl_signal_add(&surface->events.destroy, &view->xdg_toplevel.destroy);
 
   struct wlr_xdg_toplevel *toplevel = surface->toplevel;
 
   // move event
-  view->xdg.request_move.notify = on_xdg_toplevel_request_move;
-  wl_signal_add(&toplevel->events.request_move, &view->xdg.request_move);
+  view->xdg_toplevel.request_move.notify = on_xdg_toplevel_request_move;
+  wl_signal_add(&toplevel->events.request_move,
+                &view->xdg_toplevel.request_move);
 
   // minimize event
-  view->xdg.request_resize.notify = on_xdg_toplevel_request_resize;
-  wl_signal_add(&toplevel->events.request_resize, &view->xdg.request_resize);
+  view->xdg_toplevel.request_resize.notify = on_xdg_toplevel_request_resize;
+  wl_signal_add(&toplevel->events.request_resize,
+                &view->xdg_toplevel.request_resize);
 
   // maximize event
-  view->xdg.request_maximize.notify = on_xdg_toplevel_request_maximize;
+  view->xdg_toplevel.request_maximize.notify = on_xdg_toplevel_request_maximize;
   wl_signal_add(&toplevel->events.request_maximize,
-                &view->xdg.request_maximize);
+                &view->xdg_toplevel.request_maximize);
 
   // fullscreen event
-  view->xdg.request_fullscreen.notify = on_xdg_toplevel_request_fullscreen;
+  view->xdg_toplevel.request_fullscreen.notify =
+      on_xdg_toplevel_request_fullscreen;
   wl_signal_add(&toplevel->events.request_fullscreen,
-                &view->xdg.request_fullscreen);
+                &view->xdg_toplevel.request_fullscreen);
 
   // title event
-  view->xdg.set_title.notify = on_xdg_toplevel_title;
-  wl_signal_add(&toplevel->events.set_title, &view->xdg.set_title);
+  view->xdg_toplevel.set_title.notify = on_xdg_toplevel_title;
+  wl_signal_add(&toplevel->events.set_title, &view->xdg_toplevel.set_title);
 
   // app id event
-  view->xdg.set_app_id.notify = on_xdg_toplevel_app_id;
-  wl_signal_add(&toplevel->events.set_app_id, &view->xdg.set_app_id);
+  view->xdg_toplevel.set_app_id.notify = on_xdg_toplevel_app_id;
+  wl_signal_add(&toplevel->events.set_app_id, &view->xdg_toplevel.set_app_id);
 
   wlr_log(WLR_INFO, "New xdg surface with title (%s)",
           surface->toplevel->title);
@@ -481,19 +530,19 @@ void nora_focus_view(struct nora_view *view, struct wlr_surface *surface) {
   }
   struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(seat);
   /* Move the view to the front */
-  wlr_scene_node_raise_to_top(&view->xdg.scene_tree->node);
+  wlr_scene_node_raise_to_top(&view->xdg_toplevel.scene_tree->node);
 
   /* Activate the new surface */
-  wlr_xdg_toplevel_set_activated(view->xdg.xdg_toplevel, true);
+  wlr_xdg_toplevel_set_activated(view->xdg_toplevel.xdg_toplevel, true);
   /*
    * Tell the seat to have the keyboard enter this surface. wlroots will keep
    * track of this and automatically send key events to the appropriate
    * clients without additional work on your part.
    */
   if (keyboard != NULL) {
-    wlr_seat_keyboard_notify_enter(seat, view->xdg.xdg_toplevel->base->surface,
-                                   keyboard->keycodes, keyboard->num_keycodes,
-                                   &keyboard->modifiers);
+    wlr_seat_keyboard_notify_enter(
+        seat, view->xdg_toplevel.xdg_toplevel->base->surface,
+        keyboard->keycodes, keyboard->num_keycodes, &keyboard->modifiers);
   }
 }
 
