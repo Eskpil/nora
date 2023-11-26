@@ -48,56 +48,42 @@ struct nora_tree_container {
   bool ownable;
 };
 
-bool nora_tree_container_is_ownable(struct nora_tree_container *container);
-
-struct nora_tree_container *nora_tree_container_find_container_by_surface(
-    struct nora_tree_container *parent, struct wlr_surface *surface);
-
-struct nora_tree_container *nora_tree_workspace_find_container_by_surface(
-    struct nora_tree_workspace *workspace, struct wlr_surface *surface);
-
-struct nora_tree_container *
-nora_tree_output_find_container_by_surface(struct nora_tree_output *output,
-                                           struct wlr_surface *surface);
-
+struct nora_tree_root *nora_tree_root_create(struct nora_server *server);
+void nora_tree_root_attach_output(struct nora_tree_root *root,
+                                  struct nora_output *output);
 struct nora_tree_container *
 nora_tree_root_find_container_by_surface(struct nora_tree_root *root,
                                          struct wlr_surface *surface);
-
-void nora_tree_workspace_insert_container(
-    struct nora_tree_workspace *workspace,
-    struct nora_tree_container *container);
-
-struct nora_tree_workspace *
-nora_tree_output_current_workspace(struct nora_tree_output *output);
-
-struct nora_tree_container *nora_tree_container_create();
-
-void nora_tree_container_insert_child(struct nora_tree_container *parent,
-                                      struct nora_tree_container *child);
-
-void nora_tree_output_insert_container(struct nora_tree_output *output,
-                                       struct nora_tree_container *container);
-
-void nora_tree_workspace_disable(struct nora_tree_workspace *workspace);
-
-void nora_tree_workspace_enable(struct nora_tree_workspace *workspace);
-
-void nora_tree_output_prepare_present(struct nora_tree_output *output);
-
 struct nora_tree_container *
 nora_tree_root_find_container_at(struct nora_tree_root *root,
                                  struct wlr_surface **surface, double lx,
                                  double ly, double *sx, double *sy);
-
+struct wlr_scene *nora_tree_root_present_scene(struct nora_tree_root *root);
 struct nora_tree_workspace *
 nora_tree_root_current_workspace(struct nora_tree_root *root);
 
-struct wlr_scene *nora_tree_root_present_scene(struct nora_tree_root *root);
+struct nora_tree_workspace *
+nora_tree_output_current_workspace(struct nora_tree_output *output);
+void nora_tree_workspace_insert_container(
+    struct nora_tree_workspace *workspace,
+    struct nora_tree_container *container);
+struct nora_tree_container *nora_tree_workspace_find_container_by_surface(
+    struct nora_tree_workspace *workspace, struct wlr_surface *surface);
+void nora_tree_workspace_disable(struct nora_tree_workspace *workspace);
+void nora_tree_workspace_enable(struct nora_tree_workspace *workspace);
 
-struct nora_tree_root *nora_tree_root_create(struct nora_server *server);
+void nora_tree_output_insert_container(struct nora_tree_output *output,
+                                       struct nora_tree_container *container);
+struct nora_tree_container *
+nora_tree_output_find_container_by_surface(struct nora_tree_output *output,
+                                           struct wlr_surface *surface);
+void nora_tree_output_prepare_present(struct nora_tree_output *output);
 
-void nora_tree_root_attach_output(struct nora_tree_root *root,
-                                  struct nora_output *output);
+bool nora_tree_container_is_ownable(struct nora_tree_container *container);
+struct nora_tree_container *nora_tree_container_find_container_by_surface(
+    struct nora_tree_container *parent, struct wlr_surface *surface);
+struct nora_tree_container *nora_tree_container_create();
+void nora_tree_container_insert_child(struct nora_tree_container *parent,
+                                      struct nora_tree_container *child);
 
 #endif // NORA_TREE_H
