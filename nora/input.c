@@ -1,4 +1,4 @@
-#include <stdlib.h>
+#include <stdbool.h>
 
 #include "server.h"
 #include "view.h"
@@ -183,12 +183,13 @@ static void process_cursor_resize(struct nora_server *server, uint32_t time) {
 
   struct wlr_box geo_box;
   wlr_xdg_surface_get_geometry(view->xdg_toplevel.xdg_toplevel->base, &geo_box);
-  wlr_scene_node_set_position(&view->xdg_toplevel.scene_tree->node, new_left - geo_box.x,
-                              new_top - geo_box.y);
+  wlr_scene_node_set_position(&view->xdg_toplevel.scene_tree->node,
+                              new_left - geo_box.x, new_top - geo_box.y);
 
   int new_width = new_right - new_left;
   int new_height = new_bottom - new_top;
-  wlr_xdg_toplevel_set_size(view->xdg_toplevel.xdg_toplevel, new_width, new_height);
+  wlr_xdg_toplevel_set_size(view->xdg_toplevel.xdg_toplevel, new_width,
+                            new_height);
 }
 
 static void process_cursor_motion(struct nora_server *server, uint32_t time) {

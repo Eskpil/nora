@@ -84,21 +84,20 @@ struct nora_server {
 
   struct {
     struct wlr_xdg_shell *xdg_shell;
-    struct wl_listener new_xdg_surface;
-
     struct wlr_layer_shell_v1 *layer_shell;
-    struct wl_listener new_layer_surface;
-
     struct wlr_output_manager_v1 *output_manager;
     struct wlr_output_configuration_v1 *output_configuration;
-
     struct wlr_output_layout *output_layout;
-    struct wl_list outputs;
-    struct wl_listener new_output;
-
     struct nora_desktop_manager_unstable_v1 *manager;
-
     struct nora_desktop *layout;
+    struct wl_list outputs;
+
+    struct wl_listener new_xdg_toplevel;
+    struct wl_listener new_xdg_popup;
+
+    struct wl_listener new_layer_surface;
+
+    struct wl_listener new_output;
   } desktop;
 };
 
