@@ -91,17 +91,22 @@ void nora_desktop_insert_view(struct nora_desktop *desktop,
   }
 
   if (view->kind == NORA_VIEW_KIND_XDG_TOPLEVEL) {
-    wlr_log(WLR_INFO, "inserted view (%s)",
-            view->xdg_toplevel.xdg_toplevel->title);
-    if (desktop->focused_view == NULL) {
-      wlr_log(WLR_INFO, " > electing new master");
-      desktop->focused_view = view;
-    } else {
-      wlr_log(WLR_INFO, " > enslaving");
-      wl_list_insert(&desktop->views, &view->link);
-    }
+    // wlr_log(WLR_INFO, "inserted view (%s)",
+    //         view->xdg_toplevel.xdg_toplevel->title);
+    // if (desktop->focused_view == NULL) {
+    //   wlr_log(WLR_INFO, " > electing new master");
+    //   desktop->focused_view = view;
+    // } else {
+    //   wlr_log(WLR_INFO, " > enslaving");
+    //   wl_list_insert(&desktop->views, &view->link);
+    // }
 
-    nora_desktop_retile(desktop);
+    wl_list_insert(&desktop->views, &view->link);
+    // nora_desktop_retile(desktop);
+  }
+
+  if (view->kind == NORA_VIEW_KIND_XDG_POPUP) {
+    wl_list_insert(&desktop->views, &view->link);
   }
 }
 
@@ -113,20 +118,24 @@ void nora_desktop_remove_view(struct nora_desktop *desktop,
   }
 
   if (view->kind == NORA_VIEW_KIND_XDG_TOPLEVEL) {
-    if (desktop->focused_view == view) {
-      // TODO: Elect new view.
-      desktop->focused_view = NULL;
-      if (wl_list_length(&desktop->views)) {
-        struct nora_view *first_view =
-            wl_container_of(&desktop->views.next, first_view, link);
-        desktop->focused_view = first_view;
-        wl_list_remove(&first_view->link);
-      }
-      nora_desktop_retile(desktop);
-      return;
-    }
+    // if (desktop->focused_view == view) {
+    //   // TODO: Elect new view.
+    //   desktop->focused_view = NULL;
+    //   if (wl_list_length(&desktop->views)) {
+    //     struct nora_view *first_view =
+    //         wl_container_of(&desktop->views.next, first_view, link);
+    //     desktop->focused_view = first_view;
+    //     wl_list_remove(&first_view->link);
+    //   }
+    //   nora_desktop_retile(desktop);
+    //   return;
+    // }
 
     wl_list_remove(&view->link);
-    nora_desktop_retile(desktop);
+    // nora_desktop_retile(desktop);
+  }
+
+  if (view->kind == NORA_VIEW_KIND_XDG_POPUP) {
+    wl_list_remove(&view->link);
   }
 }

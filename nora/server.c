@@ -63,7 +63,7 @@ struct nora_server *nora_server_create(struct nora_server_config config) {
 
   /* Creates an output layout, which a wlroots utility for working with an
    * arrangement of screens in a physical layout. */
-  server->desktop.output_layout = wlr_output_layout_create();
+  server->desktop.output_layout = wlr_output_layout_create(server->wl_display);
 
   /* Configure a listener to be notified when new outputs are available on the
    * backend. */
@@ -72,7 +72,8 @@ struct nora_server *nora_server_create(struct nora_server_config config) {
   wl_signal_add(&server->backend->events.new_output,
                 &server->desktop.new_output);
 
-  server->desktop.output_manager = wlr_output_manager_v1_create(server->wl_display);
+  server->desktop.output_manager =
+      wlr_output_manager_v1_create(server->wl_display);
 
   /* Create a scene graph. This is a wlroots abstraction that handles all
    * rendering and damage tracking. All the compositor author needs to do
@@ -84,13 +85,19 @@ struct nora_server *nora_server_create(struct nora_server_config config) {
   server->scene_layout = wlr_scene_attach_output_layout(
       server->scene, server->desktop.output_layout);
 
-  server->presentation = wlr_presentation_create(server->wl_display, server->backend);
+  server->presentation =
+      wlr_presentation_create(server->wl_display, server->backend);
   wlr_scene_set_presentation(server->scene, server->presentation);
 
   server->desktop.xdg_shell = wlr_xdg_shell_create(server->wl_display, 6);
-  server->desktop.new_xdg_surface.notify = nora_new_xdg_surface;
-  wl_signal_add(&server->desktop.xdg_shell->events.new_surface,
-                &server->desktop.new_xdg_surface);
+
+  server->desktop.new_xdg_toplevel.notify = nora_new_xdg_toplevel;
+  wl_signal_add(&server->desktop.xdg_shell->events.new_toplevel,
+                &server->desktop.new_xdg_toplevel);
+
+  server->desktop.new_xdg_popup.notify = nora_new_xdg_popup;
+  wl_signal_add(&server->desktop.xdg_shell->events.new_popup,
+                &server->desktop.new_xdg_popup);
 
   server->desktop.layer_shell =
       wlr_layer_shell_v1_create(server->wl_display, 1);
