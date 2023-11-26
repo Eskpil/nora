@@ -13,164 +13,13 @@
 #include <wlr/types/wlr_xdg_decoration_v1.h>
 #include <wlr/types/wlr_xdg_shell.h>
 
-#include "desktop.h"
 #include "nora/desktop/manager.h"
 #include "output.h"
 #include "server.h"
 #include "view.h"
 
 static void nora_arrange_layers(struct nora_output *output) {
-  uint32_t *margin_left = &output->excluded_margin.left;
-  uint32_t *margin_right = &output->excluded_margin.right;
-  uint32_t *margin_top = &output->excluded_margin.top;
-  uint32_t *margin_bottom = &output->excluded_margin.bottom;
-
-  *margin_left = 0;
-  *margin_right = 0;
-  *margin_top = 0;
-  *margin_bottom = 0;
-
-  uint32_t output_width = output->wlr_output->width;
-  uint32_t output_height = output->wlr_output->height;
-
-  // TODO: This layout function is inefficient and relies on some guesses about
-  // how the layer shell is supposed to work, it needs reassessment later
-  struct nora_view *view;
-  wl_list_for_each_reverse(view, &output->server->desktop.layout->layers,
-                           link) {
-    if (view->kind == NORA_VIEW_KIND_LAYER) {
-      struct wlr_layer_surface_v1_state state = view->layer.surface->current;
-      bool anchor_left = state.anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_LEFT;
-      bool anchor_right = state.anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_RIGHT;
-      bool anchor_top = state.anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_TOP;
-      bool anchor_bottom = state.anchor & ZWLR_LAYER_SURFACE_V1_ANCHOR_BOTTOM;
-
-      bool anchor_horiz = anchor_left && anchor_right;
-      bool anchor_vert = anchor_bottom && anchor_top;
-
-      uint32_t desired_width = state.desired_width;
-      if (desired_width == 0) {
-        desired_width = output_width;
-      }
-      uint32_t desired_height = state.desired_height;
-      if (desired_height == 0) {
-        desired_height = output_height;
-      }
-
-      uint32_t anchor_sum =
-          anchor_left + anchor_right + anchor_top + anchor_bottom;
-      switch (anchor_sum) {
-      case 0:
-        // Not anchored to any edge => display in centre with suggested size
-        wlr_layer_surface_v1_configure(view->layer.surface, desired_width,
-                                       desired_height);
-        view->x = output_width / 2 - desired_width / 2;
-        view->y = output_height / 2 - desired_height / 2;
-        break;
-      case 1:
-        wlr_log(WLR_ERROR, "One anchor");
-        // Anchored to one edge => use suggested size
-        wlr_layer_surface_v1_configure(view->layer.surface, desired_width,
-                                       desired_height);
-        if (anchor_left || anchor_right) {
-          view->y = output_height / 2 - desired_height / 2;
-          if (anchor_left) {
-            view->x = 0;
-          } else {
-            view->x = output_width - desired_width;
-          }
-        } else {
-          view->x = output_width / 2 - desired_width / 2;
-          if (anchor_top) {
-            view->y = 0;
-          } else {
-            view->y = output_height - desired_height;
-          }
-        }
-        wlr_log(WLR_ERROR, "Set layer surface x %d, y %d, width %d, height %d",
-                view->x, view->y, desired_width, desired_height);
-        break;
-      case 2:
-        // Anchored to two edges => use suggested size
-
-        if (anchor_horiz) {
-          wlr_layer_surface_v1_configure(view->layer.surface, desired_width,
-                                         desired_height);
-          view->x = 0;
-          view->y = output_height / 2 - desired_height / 2;
-        } else if (anchor_vert) {
-          wlr_layer_surface_v1_configure(view->layer.surface, desired_width,
-                                         desired_height);
-          view->x = output_width / 2 - desired_width / 2;
-          view->y = 0;
-        } else if (anchor_top && anchor_left) {
-          wlr_layer_surface_v1_configure(view->layer.surface, desired_width,
-                                         desired_height);
-          view->x = 0;
-          view->y = 0;
-        } else if (anchor_top && anchor_right) {
-          wlr_layer_surface_v1_configure(view->layer.surface, desired_width,
-                                         desired_height);
-          view->x = output_width - desired_width;
-          view->y = 0;
-        } else if (anchor_bottom && anchor_right) {
-          wlr_layer_surface_v1_configure(view->layer.surface, desired_width,
-                                         desired_height);
-          view->x = output_width - desired_width;
-          view->y = output_height - desired_height;
-        } else if (anchor_bottom && anchor_left) {
-          wlr_layer_surface_v1_configure(view->layer.surface, desired_width,
-                                         desired_height);
-          view->x = 0;
-          view->y = output_height - desired_height;
-        }
-        break;
-      case 3:
-        // Anchored to three edges => use suggested size on free axis only
-        if (anchor_horiz) {
-          wlr_layer_surface_v1_configure(view->layer.surface, output_width,
-                                         desired_height);
-          view->x = 0;
-          if (anchor_top) {
-            view->y = *margin_top;
-            if (state.exclusive_zone) {
-              *margin_top += desired_height;
-            }
-          } else {
-            view->y = output_height - desired_height - *margin_bottom;
-            if (state.exclusive_zone) {
-              *margin_bottom += desired_height;
-            }
-          }
-        } else {
-          wlr_layer_surface_v1_configure(view->layer.surface, desired_width,
-                                         output_height);
-          view->y = 0;
-          if (anchor_left) {
-            view->x = *margin_left;
-            if (state.exclusive_zone) {
-              *margin_left += desired_width;
-            }
-          } else {
-            view->x = output_width - desired_width - *margin_right;
-            if (state.exclusive_zone) {
-              *margin_right += desired_width;
-            }
-          }
-        }
-        break;
-      case 4:
-        // Fill the output
-        wlr_layer_surface_v1_configure(view->layer.surface, output_width,
-                                       output_height);
-        view->x = 0;
-        view->y = 0;
-        break;
-      default:
-        UNREACHABLE()
-      }
-    }
-  }
+  // TODO Implement layer shell arrangement
 }
 
 static void on_layer_commit(struct wl_listener *listener, void *data) {
@@ -186,7 +35,7 @@ static void on_layer_commit(struct wl_listener *listener, void *data) {
 static void on_layer_map(struct wl_listener *listener, void *data) {
   (void)data;
 
-  struct nora_view *view = wl_container_of(listener, view, layer.map);
+  struct nora_view *view = wl_container_of(listener, view, map);
   assert(view);
 
   wlr_log(WLR_INFO, "View: (%s) requested to be mapped",
@@ -196,19 +45,17 @@ static void on_layer_map(struct wl_listener *listener, void *data) {
 static void on_layer_unmap(struct wl_listener *listener, void *data) {
   (void)data;
 
-  struct nora_view *view = wl_container_of(listener, view, layer.unmap);
+  struct nora_view *view = wl_container_of(listener, view, unmap);
   assert(view != NULL);
 
   wlr_log(WLR_INFO, "View: (%s) requested to be unmapped",
           view->layer.surface->namespace);
-
-  nora_desktop_remove_view(view->server->desktop.layout, view);
 }
 
 static void on_layer_destroy(struct wl_listener *listener, void *data) {
   (void)data;
 
-  struct nora_view *view = wl_container_of(listener, view, layer.destroy);
+  struct nora_view *view = wl_container_of(listener, view, destroy);
   assert(view != NULL);
 
   wlr_log(WLR_INFO, "View: (%s) requested to be destroyed",
@@ -237,21 +84,21 @@ void nora_new_layer_surface(struct wl_listener *listener, void *data) {
   view->server = server;
 
   view->layer.surface = surface;
-  view->layer.scene_tree =
-      wlr_scene_layer_surface_v1_create(&server->scene->tree, surface);
+  view->layer.scene_tree = wlr_scene_layer_surface_v1_create(
+      &server->tree_root->scene->tree, surface);
   view->layer.scene_tree->tree->node.data = view;
 
   view->layer.commit.notify = on_layer_commit;
   wl_signal_add(&surface->surface->events.commit, &view->layer.commit);
 
-  view->layer.map.notify = on_layer_map;
-  wl_signal_add(&surface->surface->events.map, &view->layer.map);
+  view->map.notify = on_layer_map;
+  wl_signal_add(&surface->surface->events.map, &view->map);
 
-  view->layer.unmap.notify = on_layer_unmap;
-  wl_signal_add(&surface->surface->events.unmap, &view->layer.unmap);
+  view->unmap.notify = on_layer_unmap;
+  wl_signal_add(&surface->surface->events.unmap, &view->unmap);
 
-  view->layer.destroy.notify = on_layer_destroy;
-  wl_signal_add(&surface->events.destroy, &view->layer.destroy);
+  view->destroy.notify = on_layer_destroy;
+  wl_signal_add(&surface->events.destroy, &view->destroy);
 
   view->layer.new_popup.notify = on_layer_new_popup;
   wl_signal_add(&surface->events.new_popup, &view->layer.new_popup);
@@ -262,8 +109,6 @@ void nora_new_layer_surface(struct wl_listener *listener, void *data) {
   struct nora_output *output =
       nora_output_of_wlr_output(server, surface->output);
   view->output = output;
-
-  wl_list_insert(&server->desktop.layout->layers, &view->link);
 
   nora_arrange_layers(output);
 }
@@ -313,26 +158,23 @@ static void nora_view_begin_interactive(struct nora_view *view,
 
 static void on_xdg_toplevel_map(struct wl_listener *listener, void *data) {
   /* Called when the surface is mapped, or ready to display on-screen. */
-  struct nora_view *view = wl_container_of(listener, view, xdg_toplevel.map);
-  nora_desktop_insert_view(view->server->desktop.layout, view);
+  struct nora_view *view = wl_container_of(listener, view, map);
 }
 
 static void on_xdg_toplevel_unmap(struct wl_listener *listener, void *data) {
   /* Called when the surface is unmapped, and should no longer be shown. */
-  struct nora_view *view = wl_container_of(listener, view, xdg_toplevel.unmap);
-  nora_desktop_remove_view(view->server->desktop.layout, view);
+  struct nora_view *view = wl_container_of(listener, view, unmap);
 }
 
 static void on_xdg_toplevel_destroy(struct wl_listener *listener, void *data) {
   /* Called when the surface is destroyed and should never be shown again. */
-  struct nora_view *view =
-      wl_container_of(listener, view, xdg_toplevel.destroy);
+  struct nora_view *view = wl_container_of(listener, view, destroy);
 
   nora_desktop_view_handle_unstable_v1_destroy(view->view_handle);
 
-  wl_list_remove(&view->xdg_toplevel.map.link);
-  wl_list_remove(&view->xdg_toplevel.unmap.link);
-  wl_list_remove(&view->xdg_toplevel.destroy.link);
+  wl_list_remove(&view->map.link);
+  wl_list_remove(&view->unmap.link);
+  wl_list_remove(&view->destroy.link);
 
   wl_list_remove(&view->xdg_toplevel.request_fullscreen.link);
   wl_list_remove(&view->xdg_toplevel.request_maximize.link);
@@ -357,7 +199,6 @@ static void on_xdg_toplevel_request_move(struct wl_listener *listener,
 static void on_xdg_toplevel_request_resize(struct wl_listener *listener,
                                            void *data) {
   // TODO: Check the current tiling mode in the surface's workspace.
-
   struct wlr_xdg_toplevel_resize_event *event = data;
 
   struct nora_view *view =
@@ -395,13 +236,10 @@ static void on_xdg_toplevel_app_id(struct wl_listener *listener, void *data) {
       view->view_handle, view->xdg_toplevel.xdg_toplevel->app_id);
 }
 
-static void on_xdg_popup_map(struct wl_listener *listener, void *data) {
-  struct nora_view *view = wl_container_of(listener, view, xdg_popup.map);
-  nora_desktop_insert_view(view->server->desktop.layout, view);
-}
+static void on_xdg_popup_map(struct wl_listener *listener, void *data) {}
 
 static void on_xdg_popup_unmap(struct wl_listener *listener, void *data) {
-  struct nora_view *view = wl_container_of(listener, view, xdg_popup.unmap);
+  struct nora_view *view = wl_container_of(listener, view, unmap);
 }
 
 static void on_xdg_popup_reposition(struct wl_listener *listener, void *data) {
@@ -410,7 +248,7 @@ static void on_xdg_popup_reposition(struct wl_listener *listener, void *data) {
 }
 
 static void on_xdg_popup_destroy(struct wl_listener *listener, void *data) {
-  struct nora_view *view = wl_container_of(listener, view, xdg_popup.destroy);
+  struct nora_view *view = wl_container_of(listener, view, destroy);
 }
 
 void nora_new_xdg_toplevel(struct wl_listener *listener, void *data) {
@@ -424,26 +262,24 @@ void nora_new_xdg_toplevel(struct wl_listener *listener, void *data) {
   struct nora_output *output = nora_get_current_output(server);
   view->output = output;
 
-  view->surface = toplevel->base->surface;
-
-  view->xdg_toplevel.scene_tree =
-      wlr_scene_xdg_surface_create(&server->scene->tree, toplevel->base);
-
   view->kind = NORA_VIEW_KIND_XDG_TOPLEVEL;
-  view->xdg_toplevel.scene_tree->node.data = view;
-
   view->xdg_toplevel.xdg_toplevel = toplevel;
+
+  struct nora_tree_workspace *workspace =
+      nora_tree_root_current_workspace(server->tree_root);
+  view->xdg_toplevel.scene_tree =
+      wlr_scene_xdg_surface_create(workspace->scene_tree, toplevel->base);
+  view->xdg_toplevel.scene_tree->node.data = view;
 
   view->view_handle =
       nora_desktop_view_unstable_v1_create(server->desktop.manager);
 
-  view->xdg_toplevel.map.notify = on_xdg_toplevel_map;
-  wl_signal_add(&toplevel->base->surface->events.map, &view->xdg_toplevel.map);
-  view->xdg_toplevel.unmap.notify = on_xdg_toplevel_unmap;
-  wl_signal_add(&toplevel->base->surface->events.unmap,
-                &view->xdg_toplevel.unmap);
-  view->xdg_toplevel.destroy.notify = on_xdg_toplevel_destroy;
-  wl_signal_add(&toplevel->base->events.destroy, &view->xdg_toplevel.destroy);
+  view->map.notify = on_xdg_toplevel_map;
+  wl_signal_add(&toplevel->base->surface->events.map, &view->map);
+  view->unmap.notify = on_xdg_toplevel_unmap;
+  wl_signal_add(&toplevel->base->surface->events.unmap, &view->unmap);
+  view->destroy.notify = on_xdg_toplevel_destroy;
+  wl_signal_add(&toplevel->base->events.destroy, &view->destroy);
 
   // move event
   view->xdg_toplevel.request_move.notify = on_xdg_toplevel_request_move;
@@ -474,6 +310,16 @@ void nora_new_xdg_toplevel(struct wl_listener *listener, void *data) {
   view->xdg_toplevel.set_app_id.notify = on_xdg_toplevel_app_id;
   wl_signal_add(&toplevel->events.set_app_id, &view->xdg_toplevel.set_app_id);
 
+  struct nora_tree_container *container = nora_tree_container_create();
+
+  container->ownable = true;
+  container->view = view;
+  container->surface = toplevel->base->surface;
+
+  view->container = container;
+
+  nora_tree_workspace_insert_container(workspace, container);
+
   wlr_log(WLR_INFO, "New xdg surface with title (%s)", toplevel->title);
 }
 
@@ -488,15 +334,19 @@ void nora_new_xdg_popup(struct wl_listener *listener, void *data) {
   struct nora_output *output = nora_get_current_output(server);
   view->output = output;
 
-  view->surface = popup->base->surface;
-
   view->kind = NORA_VIEW_KIND_XDG_POPUP;
 
-  struct wlr_scene_tree *parent_scene_tree = &server->scene->tree;
+  struct nora_tree_workspace *workspace =
+      nora_tree_root_current_workspace(server->tree_root);
+
+  struct wlr_scene_tree *parent_scene_tree = workspace->scene_tree;
   if (popup->parent != NULL) {
-    struct nora_view *parent =
-        nora_view_try_from_wlr_surface(server, popup->parent);
-    assert(parent != NULL);
+    struct nora_tree_container *parent_container =
+        nora_tree_root_find_container_by_surface(server->tree_root,
+                                                 popup->parent);
+    assert(parent_container != NULL);
+    struct nora_view *parent = parent_container->view;
+
     if (parent->kind == NORA_VIEW_KIND_XDG_POPUP)
       parent_scene_tree = parent->xdg_popup.scene_tree;
     else
@@ -509,15 +359,29 @@ void nora_new_xdg_popup(struct wl_listener *listener, void *data) {
 
   view->xdg_popup.xdg_popup = popup;
 
-  view->xdg_popup.map.notify = on_xdg_popup_map;
-  wl_signal_add(&popup->base->surface->events.map, &view->xdg_popup.map);
-  view->xdg_popup.unmap.notify = on_xdg_popup_unmap;
-  wl_signal_add(&popup->base->surface->events.unmap, &view->xdg_popup.unmap);
-  view->xdg_popup.destroy.notify = on_xdg_popup_destroy;
-  wl_signal_add(&popup->base->events.destroy, &view->xdg_popup.destroy);
+  view->map.notify = on_xdg_popup_map;
+  wl_signal_add(&popup->base->surface->events.map, &view->map);
+  view->unmap.notify = on_xdg_popup_unmap;
+  wl_signal_add(&popup->base->surface->events.unmap, &view->unmap);
+  view->destroy.notify = on_xdg_popup_destroy;
+  wl_signal_add(&popup->base->events.destroy, &view->destroy);
 
   view->xdg_popup.reposition.notify = on_xdg_popup_reposition;
   wl_signal_add(&popup->events.reposition, &view->xdg_popup.reposition);
+
+  struct nora_tree_container *container = nora_tree_container_create();
+  struct nora_tree_container *parent_container =
+      nora_tree_root_find_container_by_surface(view->server->tree_root,
+                                               popup->parent);
+  assert(parent_container != NULL);
+
+  container->ownable = true;
+  container->view = view;
+  container->surface = popup->base->surface;
+
+  view->container = container;
+
+  nora_tree_container_insert_child(parent_container, container);
 }
 
 void nora_focus_view(struct nora_view *view, struct wlr_surface *surface) {
@@ -541,10 +405,11 @@ void nora_focus_view(struct nora_view *view, struct wlr_surface *surface) {
      * it no longer has focus and the client will repaint accordingly, e.g.
      * stop displaying a caret.
      */
-
-    struct nora_view *previous = nora_view_try_from_wlr_surface(
-        view->server, seat->keyboard_state.focused_surface);
-    assert(previous != NULL);
+    struct nora_tree_container *previous_container =
+        nora_tree_root_find_container_by_surface(
+            view->server->tree_root, seat->keyboard_state.focused_surface);
+    assert(previous_container != NULL);
+    struct nora_view *previous = previous_container->view;
 
     if (previous->kind == NORA_VIEW_KIND_XDG_TOPLEVEL &&
         previous->xdg_toplevel.xdg_toplevel != NULL)
@@ -567,6 +432,8 @@ void nora_focus_view(struct nora_view *view, struct wlr_surface *surface) {
     return;
   }
 
+  assert(view->xdg_toplevel.scene_tree != NULL);
+
   /* Move the view to the front */
   wlr_scene_node_raise_to_top(&view->xdg_toplevel.scene_tree->node);
 
@@ -584,44 +451,14 @@ void nora_focus_view(struct nora_view *view, struct wlr_surface *surface) {
   }
 }
 
-struct nora_view *nora_view_try_from_wlr_surface(struct nora_server *server,
-                                                 struct wlr_surface *surface) {
-  struct nora_desktop *desktop = server->desktop.layout;
-
-  struct nora_view *view, *tmp;
-  wl_list_for_each_safe(view, tmp, &desktop->views, link) {
-    if (view->surface == surface) {
-      wlr_log(WLR_INFO, "candidates (>%p) (%p)", view->surface, surface);
-      wlr_log(WLR_INFO, "matched");
-      return view;
-    }
-  }
-
-  wlr_log(WLR_INFO, "no match");
-
-  return NULL;
-}
-
 struct nora_view *nora_view_at(struct nora_server *server, double lx, double ly,
                                struct wlr_surface **surface, double *sx,
                                double *sy) {
-  struct wlr_scene_node *node =
-      wlr_scene_node_at(&server->scene->tree.node, lx, ly, sx, sy);
-  if (node == NULL || node->type != WLR_SCENE_NODE_BUFFER) {
-    return NULL;
-  }
 
-  struct wlr_scene_buffer *scene_buffer = wlr_scene_buffer_from_node(node);
-  struct wlr_scene_surface *scene_surface =
-      wlr_scene_surface_try_from_buffer(scene_buffer);
-  if (!scene_surface) {
+  struct nora_tree_container *container = nora_tree_root_find_container_at(
+      server->tree_root, surface, lx, ly, sx, sy);
+  if (!container)
     return NULL;
-  }
 
-  *surface = scene_surface->surface;
-  struct wlr_scene_tree *tree = node->parent;
-  while (tree != NULL && tree->node.data == NULL) {
-    tree = tree->node.parent;
-  }
-  return tree->node.data;
+  return container->view;
 }

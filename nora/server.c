@@ -2,19 +2,18 @@
 #include <wayland-server-core.h>
 #include <wlr/types/wlr_layer_shell_v1.h>
 
-#include "desktop.h"
 #include "input.h"
 #include "nora/desktop/manager.h"
 #include "output.h"
 #include "server.h"
 #include "view.h"
 
+#include "tree.h"
+
 struct nora_server *nora_server_create(struct nora_server_config config) {
   struct nora_server *server = calloc(1, sizeof(struct nora_server));
 
   wlr_log_init(WLR_DEBUG, NULL);
-
-  server->desktop.layout = nora_desktop_create(server);
 
   server->wl_display = wl_display_create();
   /* The backend is a wlroots feature which abstracts the underlying input and
@@ -75,19 +74,10 @@ struct nora_server *nora_server_create(struct nora_server_config config) {
   server->desktop.output_manager =
       wlr_output_manager_v1_create(server->wl_display);
 
-  /* Create a scene graph. This is a wlroots abstraction that handles all
-   * rendering and damage tracking. All the compositor author needs to do
-   * is add things that should be rendered to the scene graph at the proper
-   * positions and then call wlr_scene_output_commit() to render a frame if
-   * necessary.
-   */
-  server->scene = wlr_scene_create();
-  server->scene_layout = wlr_scene_attach_output_layout(
-      server->scene, server->desktop.output_layout);
-
   server->presentation =
       wlr_presentation_create(server->wl_display, server->backend);
-  wlr_scene_set_presentation(server->scene, server->presentation);
+
+  server->tree_root = nora_tree_root_create(server);
 
   server->desktop.xdg_shell = wlr_xdg_shell_create(server->wl_display, 6);
 
@@ -179,7 +169,6 @@ int nora_server_run(struct nora_server *server) {
 
 int nora_server_destroy(struct nora_server *server) {
   wl_display_destroy_clients(server->wl_display);
-  wlr_scene_node_destroy(&server->scene->tree.node);
   wlr_xcursor_manager_destroy(server->input.cursor_mgr);
   wlr_output_layout_destroy(server->desktop.output_layout);
   wl_display_destroy(server->wl_display);

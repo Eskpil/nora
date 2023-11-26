@@ -9,7 +9,8 @@ static void output_frame(struct wl_listener *listener, void *data) {
   /* This function is called every time an output is ready to display a frame,
    * generally at the output's refresh rate (e.g. 60Hz). */
   struct nora_output *output = wl_container_of(listener, output, frame);
-  struct wlr_scene *scene = output->server->scene;
+  struct wlr_scene *scene =
+      nora_tree_root_present_scene(output->server->tree_root);
 
   struct wlr_scene_output *scene_output =
       wlr_scene_get_scene_output(scene, output->wlr_output);
@@ -67,9 +68,12 @@ void nora_new_output(struct wl_listener *listener, void *data) {
     wlr_output_state_set_mode(&state, mode);
   }
 
-  struct wlr_output_configuration_v1 *output_configuration = wlr_output_configuration_v1_create();
-  struct wlr_output_configuration_head_v1 *output_head = wlr_output_configuration_head_v1_create(output_configuration, wlr_output);
-  wlr_output_manager_v1_set_configuration(server->desktop.output_manager, output_configuration);
+  struct wlr_output_configuration_v1 *output_configuration =
+      wlr_output_configuration_v1_create();
+  struct wlr_output_configuration_head_v1 *output_head =
+      wlr_output_configuration_head_v1_create(output_configuration, wlr_output);
+  wlr_output_manager_v1_set_configuration(server->desktop.output_manager,
+                                          output_configuration);
 
   /* Atomically applies the new output state. */
   wlr_output_commit_state(wlr_output, &state);
@@ -106,9 +110,12 @@ void nora_new_output(struct wl_listener *listener, void *data) {
   struct wlr_output_layout_output *l_output =
       wlr_output_layout_add_auto(server->desktop.output_layout, wlr_output);
   struct wlr_scene_output *scene_output =
-      wlr_scene_output_create(server->scene, wlr_output);
-  wlr_scene_output_layout_add_output(server->scene_layout, l_output,
-                                     scene_output);
+      wlr_scene_output_create(server->tree_root->scene, wlr_output);
+
+  wlr_scene_output_layout_add_output(server->tree_root->scene_output_layout,
+                                     l_output, scene_output);
+
+  nora_tree_root_attach_output(output->server->tree_root, output);
 }
 
 // TODO: Use cursor to determine current output.
